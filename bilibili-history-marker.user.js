@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Bilibili History Marker
 // @namespace    https://github.com/EraserKing/Bilibili-History-Marker
-// @version      0.1
+// @version      0.2
 // @description  Add watched and watch later icon to video links
 // @author       EraserKing
 // @match        https://space.bilibili.com/*
 // @match        https://www.bilibili.com/video/*
+// @match        https://t.bilibili.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=bilibili.com
 // @connect      api.bilibili.com
 // @grant        GM_getValue
@@ -27,6 +28,13 @@
       performInitialProgress(
         addProgressToSpacePage,
         registerViewUpdateToSpacePage
+      );
+      break;
+
+    case "t.bilibili.com":
+      performInitialProgress(
+        addProgressToDynamicPage,
+        registerViewUpdateToDynamicPage
       );
       break;
 
@@ -64,9 +72,11 @@
 
         addProgressToSpecificPage(currentHistoryMap, currentWatchLaterMap);
         if (registerProgressToSpecificPage !== null) {
-          registerProgressToSpecificPage(() => {
-            addProgressToSpecificPage(currentHistoryMap, currentWatchLaterMap);
-          });
+          registerProgressToSpecificPage(
+            addProgressToSpecificPage,
+            currentHistoryMap,
+            currentWatchLaterMap
+          );
         }
       } else {
         GM_log(
@@ -76,7 +86,11 @@
     }, 2000);
   }
 
-  function registerViewUpdateToSpacePage(addProgressToPage) {
+  function registerViewUpdateToSpacePage(
+    addProgressToPage,
+    currentHistoryMap,
+    currentWatchLaterMap
+  ) {
     // Add listener for update
     Array.from(
       document.querySelectorAll(
@@ -91,7 +105,7 @@
             "Bilibili History Marker: view / page / see more / sort by updated"
           );
           performInitialProgress(
-            addProgressToSpacePage,
+            addProgressToPage,
             registerViewUpdateToSpacePage
           );
         });
@@ -104,7 +118,7 @@
 
   function addProgressToSpacePage(currentHistoryMap, currentWatchLaterMap) {
     // Find main content section
-    document.querySelectorAll(".video div.content").forEach((parent) => {
+    document.querySelectorAll(".video div.content, div.channel-video").forEach((parent) => {
       const addProgressTimer = setInterval(() => {
         const titleLinks = parent.querySelectorAll("a.title");
         // If no links found, the page might be loading. Wait 2s.
@@ -146,6 +160,57 @@
     }, 2000);
 
     GM_log("Bilibili History Marker: History added to links");
+  }
+
+  function addProgressToDynamicPage(currentHistoryMap, currentWatchLaterMap) {
+    // Find main content section
+    const addProgressTimer = setInterval(() => {
+      const titleLinks = document.querySelectorAll(
+        "div.bili-dyn-item a.bili-dyn-card-video"
+      );
+      if (titleLinks.length > 0) {
+        clearInterval(addProgressTimer);
+        processLinks(
+          titleLinks,
+          currentHistoryMap,
+          currentWatchLaterMap,
+          Array.from(titleLinks).map((link) =>
+            link.querySelector("div.bili-dyn-card-video__title")
+          )
+        );
+      }
+    }, 2000);
+
+    GM_log("Bilibili History Marker: History added to links");
+  }
+
+  function registerViewUpdateToDynamicPage(
+    addProgressToPage,
+    currentHistoryMap,
+    currentWatchLaterMap
+  ) {
+    // Add listener for update
+    const listNode = document.querySelector("div.bili-dyn-list__items");
+    const config = { childList: true };
+    const observer = new MutationObserver((mutations, observer) => {
+      mutations
+        .filter((m) => m.type === "childList")
+        .forEach((mutation) => {
+          mutation.addedNodes.forEach((node) => {
+            addClassForLink(
+              node.querySelector("a.bili-dyn-card-video"),
+              currentHistoryMap,
+              currentWatchLaterMap,
+              node.querySelector("div.bili-dyn-card-video__title")
+            );
+          });
+        });
+    });
+    observer.observe(listNode, config);
+
+    GM_log(
+      "Bilibili History Marker: Event registered when new dynamics are loaded"
+    );
   }
 
   function processLinks(
@@ -214,7 +279,7 @@
 
     finalResult += " ";
 
-    [].join(" ")
+    [].join(" ");
 
     if (currentWatchLaterMap.hasOwnProperty(bvNumber)) {
       finalResult +=
