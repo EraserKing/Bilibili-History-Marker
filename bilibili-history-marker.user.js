@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Bilibili History Marker
 // @namespace    https://github.com/EraserKing/Bilibili-History-Marker
-// @version      0.2
+// @version      0.3
 // @description  Add watched and watch later icon to video links
 // @author       EraserKing
 // @match        https://space.bilibili.com/*
 // @match        https://www.bilibili.com/video/*
+// @match        https://www.bilibili.com/watchlater/*
 // @match        https://t.bilibili.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=bilibili.com
 // @connect      api.bilibili.com
@@ -23,6 +24,7 @@
   refreshLocalHistory();
   refreshLocalWatchLater();
   addStyles();
+
   switch (window.location.hostname) {
     case "space.bilibili.com":
       performInitialProgress(
@@ -41,6 +43,8 @@
     case "www.bilibili.com":
       if (window.location.pathname.indexOf("/video/") > -1) {
         performInitialProgress(addProgressToVideoPage, null);
+      } else if (window.location.pathname.indexOf("/watchlater/") > -1) {
+        performInitialProgress(addProgressToWatchLaterPage, null);
       }
       break;
   }
@@ -118,23 +122,27 @@
 
   function addProgressToSpacePage(currentHistoryMap, currentWatchLaterMap) {
     // Find main content section
-    document.querySelectorAll(".video div.content, div.channel-video").forEach((parent) => {
-      const addProgressTimer = setInterval(() => {
-        const titleLinks = parent.querySelectorAll("a.title");
-        // If no links found, the page might be loading. Wait 2s.
-        if (titleLinks.length > 0) {
-          clearInterval(addProgressTimer);
-          processLinks(
-            titleLinks,
-            currentHistoryMap,
-            currentWatchLaterMap,
-            null
-          );
-        } else {
-          GM_log("Bilibili History Marker: No item obtained in page, wait 2s");
-        }
-      }, 2000);
-    });
+    document
+      .querySelectorAll(".video div.content, div.channel-video")
+      .forEach((parent) => {
+        const addProgressTimer = setInterval(() => {
+          const titleLinks = parent.querySelectorAll("a.title");
+          // If no links found, the page might be loading. Wait 2s.
+          if (titleLinks.length > 0) {
+            clearInterval(addProgressTimer);
+            processLinks(
+              titleLinks,
+              currentHistoryMap,
+              currentWatchLaterMap,
+              null
+            );
+          } else {
+            GM_log(
+              "Bilibili History Marker: No item obtained in page, wait 2s"
+            );
+          }
+        }, 2000);
+      });
 
     GM_log("Bilibili History Marker: History added to links");
   }
@@ -213,11 +221,36 @@
     );
   }
 
+  function addProgressToWatchLaterPage(
+    currentHistoryMap,
+    currentWatchLaterMap
+  ) {
+    // Find main content section
+    const addProgressTimer = setInterval(() => {
+      const titleLinks = document.querySelectorAll(
+        "div.list-box div.av-item div.av-about"
+      );
+      if (titleLinks.length > 0) {
+        clearInterval(addProgressTimer);
+        processLinks(
+          titleLinks,
+          currentHistoryMap,
+          currentWatchLaterMap,
+          null,
+          { watchLater: "skip" }
+        );
+      }
+    }, 2000);
+
+    GM_log("Bilibili History Marker: History added to links");
+  }
+
   function processLinks(
     links,
     currentHistoryMap,
     currentWatchLaterMap,
-    classAttachTargetElements
+    classAttachTargetElements,
+    classOptions
   ) {
     Array.from(links)
       .filter(
@@ -234,7 +267,8 @@
           currentWatchLaterMap,
           classAttachTargetElements === null
             ? null
-            : classAttachTargetElements[i]
+            : classAttachTargetElements[i],
+          classOptions
         )
       );
   }
@@ -243,13 +277,19 @@
     link,
     currentHistoryMap,
     currentWatchLaterMap,
-    classAttachTargetElement
+    classAttachTargetElement,
+    classOptions
   ) {
     const [isVideo, bvNumber] = getVideoBv(link.href);
     if (isVideo) {
       (classAttachTargetElement ?? link).className +=
         " " +
-        getNewClassForLink(bvNumber, currentHistoryMap, currentWatchLaterMap);
+        getNewClassForLink(
+          bvNumber,
+          currentHistoryMap,
+          currentWatchLaterMap,
+          classOptions
+        );
     }
   }
 
@@ -265,29 +305,33 @@
   function getNewClassForLink(
     bvNumber,
     currentHistoryMap,
-    currentWatchLaterMap
+    currentWatchLaterMap,
+    classOptions
   ) {
     let finalResult = "";
-    if (currentHistoryMap.hasOwnProperty(bvNumber)) {
-      finalResult +=
-        currentHistoryMap[bvNumber] === -1
-          ? "bhm-video-watched-finished"
-          : "bhm-video-watched-partially";
-    } else {
-      finalResult += "bhm-video-watched-none";
+
+    if (classOptions?.history !== "skip") {
+      if (currentHistoryMap.hasOwnProperty(bvNumber)) {
+        finalResult +=
+          currentHistoryMap[bvNumber] === -1
+            ? "bhm-video-watched-finished"
+            : "bhm-video-watched-partially";
+      } else {
+        finalResult += "bhm-video-watched-none";
+      }
+
+      finalResult += " ";
     }
 
-    finalResult += " ";
-
-    [].join(" ");
-
-    if (currentWatchLaterMap.hasOwnProperty(bvNumber)) {
-      finalResult +=
-        currentWatchLaterMap[bvNumber] === -1
-          ? "bhm-video-watch-later-finished"
-          : "bhm-video-watch-later-partially";
-    } else {
-      finalResult += "bhm-video-watch-later-none";
+    if (classOptions?.watchLater !== "skip") {
+      if (currentWatchLaterMap.hasOwnProperty(bvNumber)) {
+        finalResult +=
+          currentWatchLaterMap[bvNumber] === -1
+            ? "bhm-video-watch-later-finished"
+            : "bhm-video-watch-later-partially";
+      } else {
+        finalResult += "bhm-video-watch-later-none";
+      }
     }
 
     return finalResult;
