@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bilibili History Marker
 // @namespace    https://github.com/EraserKing/Bilibili-History-Marker
-// @version      0.3
+// @version      0.4
 // @description  Add watched and watch later icon to video links
 // @author       EraserKing
 // @match        https://space.bilibili.com/*
@@ -10,19 +10,17 @@
 // @match        https://t.bilibili.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=bilibili.com
 // @connect      api.bilibili.com
-// @grant        GM_getValue
-// @grant        GM_setValue
-// @grant        GM_log
-// @grant        GM_addStyle
-// @grant        GM_xmlhttpRequest
+// @grant        GM.getValue
+// @grant        GM.setValue
+// @grant        GM.xmlHttpRequest
 // @updateUrl    https://github.com/EraserKing/Bilibili-History-Marker/raw/main/bilibili-history-marker.user.js
 // @downloadUrl  https://github.com/EraserKing/Bilibili-History-Marker/raw/main/bilibili-history-marker.user.js
 // ==/UserScript==
 
-(function () {
+(async function () {
   "use strict";
-  refreshLocalHistory();
-  refreshLocalWatchLater();
+  await refreshLocalHistory();
+  await refreshLocalWatchLater();
   addStyles();
 
   switch (window.location.hostname) {
@@ -50,11 +48,23 @@
   }
 
   function addStyles() {
-    GM_addStyle(".bhm-video-watched-finished::before {content: '✅'}");
-    GM_addStyle(".bhm-video-watched-partially::before {content: '☑️'}");
+    const styleEntries = [];
+    styleEntries.push(".bhm-video-watched-finished::before {content: '✅'}");
+    styleEntries.push(".bhm-video-watched-partially::before {content: '☑️'}");
 
-    GM_addStyle(".bhm-video-watch-later-finished::before {content: '⌛'}");
-    GM_addStyle(".bhm-video-watch-later-partially::before {content: '⏳'}");
+    styleEntries.push(
+      ".bhm-video-watch-later-finished::before {content: '⌛'}"
+    );
+    styleEntries.push(
+      ".bhm-video-watch-later-partially::before {content: '⏳'}"
+    );
+
+    const head = document.getElementsByTagName("head")[0];
+    const style = document.createElement("style");
+    style.type = "text/css";
+    style.innerHTML = styleEntries.join("\n");
+
+    head.appendChild(style);
   }
 
   function performInitialProgress(
@@ -62,9 +72,12 @@
     registerProgressToSpecificPage
   ) {
     // Only start processing when local history is not empty
-    const addProgressTimer = setInterval(() => {
-      const currentHistoryMapString = GM_getValue("local_history_map", "");
-      const currentWatchLaterMapString = GM_getValue(
+    const addProgressTimer = setInterval(async () => {
+      const currentHistoryMapString = await GM.getValue(
+        "local_history_map",
+        ""
+      );
+      const currentWatchLaterMapString = await GM.getValue(
         "local_watch_later_map",
         ""
       );
@@ -83,7 +96,7 @@
           );
         }
       } else {
-        GM_log(
+        console.log(
           "Bilibili History Marker: No local history or watch later found yet, wait 2s"
         );
       }
@@ -105,7 +118,7 @@
       .forEach((item) => {
         item.isProgressEventListenerAdded = true;
         item.addEventListener("click", () => {
-          GM_log(
+          console.log(
             "Bilibili History Marker: view / page / see more / sort by updated"
           );
           performInitialProgress(
@@ -115,7 +128,7 @@
         });
       });
 
-    GM_log(
+    console.log(
       "Bilibili History Marker: Event registered when view, page, see more, or sort by updated"
     );
   }
@@ -137,14 +150,14 @@
               null
             );
           } else {
-            GM_log(
+            console.log(
               "Bilibili History Marker: No item obtained in page, wait 2s"
             );
           }
         }, 2000);
       });
 
-    GM_log("Bilibili History Marker: History added to links");
+    console.log("Bilibili History Marker: History added to links");
   }
 
   function addProgressToVideoPage(currentHistoryMap, currentWatchLaterMap) {
@@ -163,11 +176,13 @@
           Array.from(titleLinks).map((link) => link.querySelector("p"))
         );
       } else {
-        GM_log("Bilibili History Marker: No item obtained in page, wait 2s");
+        console.log(
+          "Bilibili History Marker: No item obtained in page, wait 2s"
+        );
       }
     }, 2000);
 
-    GM_log("Bilibili History Marker: History added to links");
+    console.log("Bilibili History Marker: History added to links");
   }
 
   function addProgressToDynamicPage(currentHistoryMap, currentWatchLaterMap) {
@@ -189,7 +204,7 @@
       }
     }, 2000);
 
-    GM_log("Bilibili History Marker: History added to links");
+    console.log("Bilibili History Marker: History added to links");
   }
 
   function registerViewUpdateToDynamicPage(
@@ -216,7 +231,7 @@
     });
     observer.observe(listNode, config);
 
-    GM_log(
+    console.log(
       "Bilibili History Marker: Event registered when new dynamics are loaded"
     );
   }
@@ -228,7 +243,7 @@
     // Find main content section
     const addProgressTimer = setInterval(() => {
       const titleLinks = document.querySelectorAll(
-        "div.list-box div.av-item div.av-about"
+        "div.list-box div.av-item div.av-about a.t"
       );
       if (titleLinks.length > 0) {
         clearInterval(addProgressTimer);
@@ -242,7 +257,7 @@
       }
     }, 2000);
 
-    GM_log("Bilibili History Marker: History added to links");
+    console.log("Bilibili History Marker: History added to links");
   }
 
   function processLinks(
@@ -308,115 +323,119 @@
     currentWatchLaterMap,
     classOptions
   ) {
-    let finalResult = "";
+    let classesToAdd = [];
 
     if (classOptions?.history !== "skip") {
       if (currentHistoryMap.hasOwnProperty(bvNumber)) {
-        finalResult +=
+        classesToAdd.push(
           currentHistoryMap[bvNumber] === -1
             ? "bhm-video-watched-finished"
-            : "bhm-video-watched-partially";
+            : "bhm-video-watched-partially"
+        );
       } else {
-        finalResult += "bhm-video-watched-none";
+        classesToAdd.push("bhm-video-watched-none");
       }
-
-      finalResult += " ";
     }
 
     if (classOptions?.watchLater !== "skip") {
       if (currentWatchLaterMap.hasOwnProperty(bvNumber)) {
-        finalResult +=
+        classesToAdd.push(
           currentWatchLaterMap[bvNumber] === -1
             ? "bhm-video-watch-later-finished"
-            : "bhm-video-watch-later-partially";
+            : "bhm-video-watch-later-partially"
+        );
       } else {
-        finalResult += "bhm-video-watch-later-none";
+        classesToAdd.push("bhm-video-watch-later-none");
       }
     }
 
-    return finalResult;
+    return classesToAdd.join(" ");
   }
 
-  function addHistoryToMap(pageNumber, historyMap) {
+  async function addHistoryToMap(pageNumber, historyMap) {
     if (pageNumber < 5) {
-      GM_xmlhttpRequest({
+      GM.xmlHttpRequest({
         method: "GET",
         url: `https://api.bilibili.com/x/v2/history?ps=300&pn=${pageNumber}`,
         responseType: "json",
-        onload: (res) => {
-          GM_log(
+        onload: async (res) => {
+          console.log(
             `Bilibili History Marker: Reading history of page ${pageNumber}`
           );
-          res.response.data.forEach((d) => {
+          res.response.data.map((d) => {
             historyMap[d.bvid] = d.progress;
           });
-          addHistoryToMap(pageNumber + 1, historyMap);
+          await addHistoryToMap(pageNumber + 1, historyMap);
         },
         onerror: (error) => {
-          GM_log("Bilibili History Marker: Unable to obtain history");
-          GM_log(error);
+          console.log("Bilibili History Marker: Unable to obtain history");
+          console.log(error);
         },
       });
     } else {
       const finalHistoryMapString = JSON.stringify(historyMap);
-      GM_setValue("local_history_last_fetch", Date.now());
-      GM_setValue("local_history_map", finalHistoryMapString);
-      GM_log("Bilibili History Marker: Local history storage updated");
+      await GM.setValue("local_history_last_fetch", Date.now());
+      await GM.setValue("local_history_map", finalHistoryMapString);
+      console.log("Bilibili History Marker: Local history storage updated");
     }
   }
 
-  function addWatchLaterToMap(watchLaterMap) {
-    GM_xmlhttpRequest({
+  async function addWatchLaterToMap(watchLaterMap) {
+    GM.xmlHttpRequest({
       method: "GET",
       url: `https://api.bilibili.com/x/v2/history/toview`,
       responseType: "json",
-      onload: (res) => {
-        GM_log(`Bilibili History Marker: Reading watch later`);
+      onload: async (res) => {
+        console.log(`Bilibili History Marker: Reading watch later`);
         res.response.data.list.forEach((d) => {
           watchLaterMap[d.bvid] = d.progress;
         });
 
         const finalWatchLaterMapString = JSON.stringify(watchLaterMap);
-        GM_setValue("local_watch_later_last_fetch", Date.now());
-        GM_setValue("local_watch_later_map", finalWatchLaterMapString);
-        GM_log("Bilibili History Marker: Local watch later storage updated");
+        await GM.setValue("local_watch_later_last_fetch", Date.now());
+        await GM.setValue("local_watch_later_map", finalWatchLaterMapString);
+        console.log(
+          "Bilibili History Marker: Local watch later storage updated"
+        );
       },
       onerror: (error) => {
-        GM_log("Bilibili History Marker: Unable to obtain watch later");
-        GM_log(error);
+        console.log("Bilibili History Marker: Unable to obtain watch later");
+        console.log(error);
       },
     });
   }
 
-  function refreshLocalHistory() {
-    const lastFetchDateTime = GM_getValue("local_history_last_fetch") ?? 0;
+  async function refreshLocalHistory() {
+    const lastFetchDateTime =
+      (await GM.getValue("local_history_last_fetch")) ?? 0;
     const alwaysRefresh = false;
 
     let historyMap = {};
 
     // Fetch per 15 min
     if (alwaysRefresh || Date.now() - lastFetchDateTime > 15 * 60 * 1000) {
-      GM_setValue("local_history_map", "");
-      addHistoryToMap(0, historyMap);
+      await GM.setValue("local_history_map", "");
+      await addHistoryToMap(0, historyMap);
     } else {
-      GM_log(
+      console.log(
         "Bilibili History Marker: Local history minimum refresh interval not reached"
       );
     }
   }
 
-  function refreshLocalWatchLater() {
-    const lastFetchDateTime = GM_getValue("local_watch_later_last_fetch") ?? 0;
+  async function refreshLocalWatchLater() {
+    const lastFetchDateTime =
+      (await GM.getValue("local_watch_later_last_fetch")) ?? 0;
     const alwaysRefresh = false;
 
     let watchLaterMap = {};
 
     // Fetch per 15 min
     if (alwaysRefresh || Date.now() - lastFetchDateTime > 15 * 60 * 1000) {
-      GM_setValue("local_watch_later_map", "");
-      addWatchLaterToMap(watchLaterMap);
+      await GM.setValue("local_watch_later_map", "");
+      await addWatchLaterToMap(watchLaterMap);
     } else {
-      GM_log(
+      console.log(
         "Bilibili History Marker: Local watch later minimum refresh interval not reached"
       );
     }
