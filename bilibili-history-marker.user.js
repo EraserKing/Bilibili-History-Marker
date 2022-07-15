@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bilibili History Marker
 // @namespace    https://github.com/EraserKing/Bilibili-History-Marker
-// @version      0.4
+// @version      0.5
 // @description  Add watched and watch later icon to video links
 // @author       EraserKing
 // @match        https://space.bilibili.com/*
@@ -219,14 +219,18 @@
       mutations
         .filter((m) => m.type === "childList")
         .forEach((mutation) => {
-          mutation.addedNodes.forEach((node) => {
-            addClassForLink(
-              node.querySelector("a.bili-dyn-card-video"),
-              currentHistoryMap,
-              currentWatchLaterMap,
-              node.querySelector("div.bili-dyn-card-video__title")
-            );
-          });
+          mutation.addedNodes
+            .filter(
+              (node) => node.querySelector("a.bili-dyn-card-video") !== null
+            )
+            .forEach((node) => {
+              addClassForLink(
+                node.querySelector("a.bili-dyn-card-video"),
+                currentHistoryMap,
+                currentWatchLaterMap,
+                node.querySelector("div.bili-dyn-card-video__title")
+              );
+            });
         });
     });
     observer.observe(listNode, config);
