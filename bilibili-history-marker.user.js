@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bilibili History Marker
 // @namespace    https://github.com/EraserKing/Bilibili-History-Marker
-// @version      0.5
+// @version      0.6
 // @description  Add watched and watch later icon to video links
 // @author       EraserKing
 // @match        https://space.bilibili.com/*
@@ -13,38 +13,85 @@
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM.xmlHttpRequest
+// @grant        GM.registerMenuCommand
+// @grant        GM.unregisterMenuCommand
 // @updateUrl    https://github.com/EraserKing/Bilibili-History-Marker/raw/main/bilibili-history-marker.user.js
 // @downloadUrl  https://github.com/EraserKing/Bilibili-History-Marker/raw/main/bilibili-history-marker.user.js
 // ==/UserScript==
 
 (async function () {
   "use strict";
-  await refreshLocalHistory();
-  await refreshLocalWatchLater();
+
+  addDefaultMenu();
+
+  if ((await GM.getValue("add_watched_flags_suspend")) === "yes") {
+    console.log("Bilibili History Marker: Disabled. Return.");
+    return;
+  }
+
+  const observers = [];
+
+  await refreshLocalCache(false);
   addStyles();
+  addFlags();
 
-  switch (window.location.hostname) {
-    case "space.bilibili.com":
-      performInitialProgress(
-        addProgressToSpacePage,
-        registerViewUpdateToSpacePage
-      );
-      break;
-
-    case "t.bilibili.com":
-      performInitialProgress(
-        addProgressToDynamicPage,
-        registerViewUpdateToDynamicPage
-      );
-      break;
-
-    case "www.bilibili.com":
-      if (window.location.pathname.indexOf("/video/") > -1) {
-        performInitialProgress(addProgressToVideoPage, null);
-      } else if (window.location.pathname.indexOf("/watchlater/") > -1) {
-        performInitialProgress(addProgressToWatchLaterPage, null);
+  async function addDefaultMenu() {
+    GM.registerMenuCommand(
+      "Current status: " +
+        ((await GM.getValue("add_watched_flags_suspend")) === "yes"
+          ? "☑️"
+          : "✅"),
+      () => {
+        console.log("Bilibili History Marker: Read current status done");
       }
-      break;
+    );
+
+    GM.registerMenuCommand("Refresh history cache", () => {
+      console.log("Bilibili History Marker: Force refresh local cache");
+      refreshLocalCache(true);
+    });
+
+    GM.registerMenuCommand("Clear flags", () => {
+      console.log("Bilibili History Marker: Clear all added flags");
+      clearExistingFlags();
+    });
+
+    GM.registerMenuCommand("Re-add flags", () => {
+      console.log("Bilibili History Marker: Clear all added flags and retry");
+      clearExistingFlags();
+      addFlags();
+    });
+
+    GM.registerMenuCommand("Resume adding flags", async () => {
+      console.log("Bilibili History Marker: Set suspend flag to no");
+      await GM.setValue("add_watched_flags_suspend", "no");
+    });
+
+    GM.registerMenuCommand("Suspend adding flags", async () => {
+      console.log("Bilibili History Marker: Set suspend flag to yes");
+      await GM.setValue("add_watched_flags_suspend", "yes");
+    });
+  }
+
+  function clearExistingFlags() {
+    [
+      "bhm-video-watched-finished",
+      "bhm-video-watched-partially",
+      "bhm-video-watch-later-finished",
+      "bhm-video-watch-later-partially",
+    ].forEach((className) => {
+      document
+        .querySelectorAll("." + className)
+        .forEach((element) => element.classList.remove(className));
+    });
+
+    observers.forEach((observer) => observer.disconnect());
+    observers.length = 0;
+  }
+
+  async function refreshLocalCache(forceRefresh = false) {
+    await refreshLocalHistory(forceRefresh);
+    await refreshLocalWatchLater(forceRefresh);
   }
 
   function addStyles() {
@@ -65,6 +112,32 @@
     style.innerHTML = styleEntries.join("\n");
 
     head.appendChild(style);
+  }
+
+  function addFlags() {
+    switch (window.location.hostname) {
+      case "space.bilibili.com":
+        performInitialProgress(
+          addProgressToSpacePage,
+          registerViewUpdateToSpacePage
+        );
+        break;
+
+      case "t.bilibili.com":
+        performInitialProgress(
+          addProgressToDynamicPage,
+          registerViewUpdateToDynamicPage
+        );
+        break;
+
+      case "www.bilibili.com":
+        if (window.location.pathname.indexOf("/video/") > -1) {
+          performInitialProgress(addProgressToVideoPage, null);
+        } else if (window.location.pathname.indexOf("/watchlater/") > -1) {
+          performInitialProgress(addProgressToWatchLaterPage, null);
+        }
+        break;
+    }
   }
 
   function performInitialProgress(
@@ -216,6 +289,7 @@
     const listNode = document.querySelector("div.bili-dyn-list__items");
     const config = { childList: true };
     const observer = new MutationObserver((mutations, observer) => {
+      console.log("Bilibili History Marker: New page of dynamic loaded;");
       mutations
         .filter((m) => m.type === "childList")
         .forEach((mutation) => {
@@ -234,6 +308,7 @@
         });
     });
     observer.observe(listNode, config);
+    observers.push(observer);
 
     console.log(
       "Bilibili History Marker: Event registered when new dynamics are loaded"
@@ -409,15 +484,14 @@
     });
   }
 
-  async function refreshLocalHistory() {
+  async function refreshLocalHistory(forceRefresh = false) {
     const lastFetchDateTime =
       (await GM.getValue("local_history_last_fetch")) ?? 0;
-    const alwaysRefresh = false;
 
     let historyMap = {};
 
     // Fetch per 15 min
-    if (alwaysRefresh || Date.now() - lastFetchDateTime > 15 * 60 * 1000) {
+    if (forceRefresh || Date.now() - lastFetchDateTime > 15 * 60 * 1000) {
       await GM.setValue("local_history_map", "");
       await addHistoryToMap(0, historyMap);
     } else {
@@ -427,7 +501,7 @@
     }
   }
 
-  async function refreshLocalWatchLater() {
+  async function refreshLocalWatchLater(forceRefresh = false) {
     const lastFetchDateTime =
       (await GM.getValue("local_watch_later_last_fetch")) ?? 0;
     const alwaysRefresh = false;
@@ -435,7 +509,7 @@
     let watchLaterMap = {};
 
     // Fetch per 15 min
-    if (alwaysRefresh || Date.now() - lastFetchDateTime > 15 * 60 * 1000) {
+    if (forceRefresh || Date.now() - lastFetchDateTime > 15 * 60 * 1000) {
       await GM.setValue("local_watch_later_map", "");
       await addWatchLaterToMap(watchLaterMap);
     } else {
