@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bilibili History Marker
 // @namespace    https://github.com/EraserKing/Bilibili-History-Marker
-// @version      0.5
+// @version      0.6
 // @description  Add watched and watch later icon to video links
 // @author       EraserKing
 // @match        https://space.bilibili.com/*
@@ -219,7 +219,7 @@
       mutations
         .filter((m) => m.type === "childList")
         .forEach((mutation) => {
-          mutation.addedNodes
+          [...mutation.addedNodes]
             .filter(
               (node) => node.querySelector("a.bili-dyn-card-video") !== null
             )
