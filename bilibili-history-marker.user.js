@@ -75,8 +75,10 @@
 
   function clearExistingFlags() {
     [
+      "bhm-video-watched-none",
       "bhm-video-watched-finished",
       "bhm-video-watched-partially",
+      "bhm-video-watch-later-none",
       "bhm-video-watch-later-finished",
       "bhm-video-watch-later-partially",
     ].forEach((className) => {
